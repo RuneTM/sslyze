@@ -23,9 +23,9 @@
 
 from xml.etree.ElementTree import Element
 
-from plugins import PluginBase
-from utils.ThreadPool import ThreadPool
-from utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
+from sslyze.plugins import PluginBase
+from sslyze.utils.ThreadPool import ThreadPool
+from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
 from nassl import SSLV2, SSLV3, TLSV1, TLSV1_1, TLSV1_2
 from nassl.SslClient import SslClient
 
@@ -196,10 +196,8 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
             # Add one element for each ciphers
             for (sslCipher, (msg, keysize)) in resultList:
                 cipherXmlAttr = {'name' : sslCipher, 'connectionStatus' : msg}
-
                 if keysize:
-                    cipherXmlAttr['keySize'] = str(keysize)
-
+                     cipherXmlAttr['keySize'] = str(keysize)
                 # Add an Anonymous attribute for anonymous ciphers
                 cipherXmlAttr['anonymous'] = str(True) if 'ADH' in sslCipher or 'AECDH' in sslCipher else str(False)
                 cipherXml = Element('cipherSuite', attrib = cipherXmlAttr)

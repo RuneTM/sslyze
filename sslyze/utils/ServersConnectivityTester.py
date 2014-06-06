@@ -26,7 +26,7 @@ import socket
 from xml.etree.ElementTree import Element
 from ThreadPool import ThreadPool
 from nassl import SSLV23, SSLV3, TLSV1, TLSV1_2
-from SSLyzeSSLConnection import create_sslyze_connection, StartTLSError, ProxyError
+from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, StartTLSError, ProxyError
 
 
 class InvalidTargetError(Exception):

@@ -22,11 +22,11 @@
 #-------------------------------------------------------------------------------
 from xml.etree.ElementTree import Element
 
-from plugins import PluginBase
-from utils.ThreadPool import ThreadPool
+from sslyze.plugins import PluginBase
+from sslyze.utils.ThreadPool import ThreadPool
 
 from nassl import SSL_OP_NO_TICKET
-from utils.SSLyzeSSLConnection import create_sslyze_connection
+from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 
 
 class PluginSessionResumption(PluginBase.PluginBase):

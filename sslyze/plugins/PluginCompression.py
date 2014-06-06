@@ -23,10 +23,8 @@
 
 from xml.etree.ElementTree import Element
 
-
-from plugins import PluginBase
-
-from utils.SSLyzeSSLConnection import create_sslyze_connection
+from sslyze.plugins import PluginBase
+from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl.SslClient import ClientCertificateRequested
 
 

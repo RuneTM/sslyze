@@ -54,6 +54,7 @@ class CommandLineParser():
     # Default values
     DEFAULT_RETRY_ATTEMPTS = 4
     DEFAULT_TIMEOUT = 5
+    SILENCE_OUTPUT = False
 
 
     def __init__(self, available_plugins, sslyze_version):
@@ -179,6 +180,13 @@ class CommandLineParser():
             type='int',
             dest='timeout',
             default=self.DEFAULT_TIMEOUT)
+
+        # Silence output using NoOutput class.
+        self._parser.add_option(
+            '--silence',
+            help='Silence output to the command line.',
+            action='store_true',
+            default=self.SILENCE_OUTPUT)
 
 
         # Control connection retry attempts

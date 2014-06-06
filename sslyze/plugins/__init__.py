@@ -27,8 +27,9 @@ import sys
 import inspect
 from imp import load_module, find_module
 
-import plugins
-import plugins.PluginBase
+from sslyze.plugins import PluginBase
+import sslyze.plugins
+
 
 
 class PluginsFinder:
@@ -45,7 +46,7 @@ class PluginsFinder:
         self._commands = {}
         self._aggressive_comands = []
 
-        plugin_dir = plugins.__path__[0]
+        plugin_dir = sslyze.plugins.__path__[0]
         full_plugin_dir = os.path.join(sys.path[0], plugin_dir)
 
         if os.path.exists(full_plugin_dir):
@@ -60,8 +61,8 @@ class PluginsFinder:
                     # The plugin package HAS to be imported as a submodule
                     # of module 'plugins' or it will break windows compatibility
                         (file, pathname, description) = \
-                            find_module(full_name, plugins.__path__)
-                        module = load_module('plugins.' + full_name, file,
+                            find_module(full_name, sslyze.plugins.__path__)
+                        module = load_module('sslyze.plugins.' + full_name, file,
                                                 pathname, description)
                     except Exception as e:
                         print '  ' + module_name + ' - Import Error: ' + str(e)
@@ -74,8 +75,8 @@ class PluginsFinder:
                             # A class declaration was found in that module
                             # Checking if it's a subclass of PluginBase
                             # Discarding PluginBase as a subclass of PluginBase
-                            if obj != plugins.PluginBase.PluginBase:
-                                if issubclass(obj, plugins.PluginBase.PluginBase):
+                            if obj != PluginBase.PluginBase:
+                                if issubclass(obj, PluginBase.PluginBase):
                                     # A plugin was found, keep it
                                     self._plugin_classes.add(obj)
 

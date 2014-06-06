@@ -31,9 +31,9 @@
 #-------------------------------------------------------------------------------
 
 from xml.etree.ElementTree import Element
-from utils.HTTPResponseParser import parse_http_response
-from utils.SSLyzeSSLConnection import create_sslyze_connection
-from plugins import PluginBase
+from sslyze.utils.HTTPResponseParser import parse_http_response
+from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
+from sslyze.plugins import PluginBase
 from urlparse import urlparse
 import Cookie
 

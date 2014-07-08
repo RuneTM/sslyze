@@ -24,7 +24,7 @@
 from time import time
 from sslyze.utils.OutputClasses import RegularOutput, NoOutput
 from sslyze.utils.OutputProcessors import XMLProcessor
-from sslyze.sslyze_core import main
+from sslyze.sslyze_core import main, PROJECT_VERSION
 from sys import exit as sys_exit
 
 from sslyze.plugins import PluginsFinder
@@ -36,11 +36,6 @@ except ImportError:
     print '\nERROR: Could not import nassl Python module. Did you clone SSLyze\'s repo ? \n' +\
     'Please download the right pre-compiled package as described in the README.'
     sys_exit()
-
-PROJECT_VERSION = 'SSLyze v1.0 dev'
-PROJECT_URL = "https://github.com/isecPartners/sslyze"
-PROJECT_EMAIL = 'sslyze@isecpartners.com'
-PROJECT_DESC = 'Fast and full-featured SSL scanner'
 
 def console_start():
     start_time = time()

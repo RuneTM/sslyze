@@ -100,112 +100,155 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
         # Start processing the jobs
         thread_pool.start(NB_THREADS)
 
-        result_dicts = {'preferredCipherSuite':{}, 'acceptedCipherSuites':{},
-                        'rejectedCipherSuites':{}, 'errors':{}}
+        cipher_result_dicts = {
+            'preferredCipherSuite':[],
+            'acceptedCipherSuites':[],
+            'errors':[],
+            'rejectedCipherSuites':[]
+        }
 
         # Store the results as they come
         for completed_job in thread_pool.get_result():
             (job, result) = completed_job
             if result is not None:
                 (result_type, ssl_cipher, keysize, msg) = result
-                (result_dicts[result_type])[ssl_cipher] = (msg, keysize)
+                cipher_result_dicts[result_type].append(self.__process_cipher_data(ssl_cipher, msg, keysize))
 
         # Store thread pool errors
         for failed_job in thread_pool.get_error():
             (job, exception) = failed_job
             ssl_cipher = str(job[1][2])
-            error_msg = str(exception.__class__.__name__) + ' - ' + str(exception)
-            result_dicts['errors'][ssl_cipher] = (error_msg, None)
+            error_msg = '{} - {}'.format(exception.__class__.__name__, exception)
+            cipher_result_dicts['errors'].append(self.__process_cipher_data(ssl_cipher, error_msg, None))
 
         thread_pool.join()
 
-        # Generate results
-        return PluginBase.PluginResult(self._generate_text_output(result_dicts, command),
-                                       self._generate_xml_output(result_dicts, command))
+        # Results.
+        results_dict = {
+                'tag_name':command,
+                'attributes':{'title':'{} Cipher Suites'.format(command.upper())},
+                'sub':[]
+            }
+
+        # Sort cipher results and append to results dict.
+        for result_type, cipher_result in cipher_result_dicts.items():
+            results_dict['sub'].append({
+                'tag_name':result_type,
+                'sub':sorted(cipher_result, key=lambda cipher: cipher['attributes']['name'])
+            })
+            
+        return PluginBase.PluginResult(self._generate_text_output(results_dict),
+                                       self._generate_xml_output(results_dict),
+                                       results_dict)
+
+    def __process_cipher_data(self, cipher_name, msg, keysize):
+        """
+        Prepare data for cipher result dict.
+        """
+        tmp_cipher_result = {
+            'tag_name':'cipherSuite',
+            'attributes':{
+                'name':cipher_name,
+                'connectionStatus':msg,
+                'anonymous':str(True) if 'ADH' in cipher_name or 'AECDH' in cipher_name else str(False)
+            }
+        }
+        if keysize:
+            tmp_cipher_result['attributes']['keySize'] = str(keysize)
+        return tmp_cipher_result
+
+    def _generate_final_results(self, results_dict, command):
+        # TODO: REMOVE is now obsolete.
+        final_results = {
+                'tag_name':command,
+                'attributes':{'title':'{} Cipher Suites'.format(command.upper())},
+                'sub':[]
+            }
+
+        for (resultKey, resultDict) in results_dict.items():
+            tmp_results_dict = {
+                    'tag_name':resultKey,
+                    'sub':[]
+                }
+
+            # Sort the cipher suites by name to make the XML diff-able
+            resultList = sorted(resultDict.items(),
+                                 key=lambda (k,v): (k,v), reverse=False)
+
+            # Add one element for each cipher
+            for (sslCipher, (msg, keysize)) in resultList:
+                tmp_cipher_result = {
+                    'tag_name':'cipherSuite',
+                    'attributes':{
+                        'name':sslCipher,
+                        'connectionStatus':msg,
+                        'anonymous':str(True) if 'ADH' in sslCipher or 'AECDH' in sslCipher else str(False)
+                    }
+                }
+                if keysize:
+                    tmp_cipher_result['attributes']['keySize'] = str(keysize)
+                tmp_results_dict['sub'].append(tmp_cipher_result)
+            final_results['sub'].append(tmp_results_dict)
+        return final_results
 
 
 # == INTERNAL FUNCTIONS ==
 
 # FORMATTING FUNCTIONS
-    def _generate_text_output(self, resultDicts, sslVersion):
+    def _generate_text_output(self, results_dict):
 
         cipherFormat = '                 {0:<32}{1:<35}'.format
         titleFormat =  '      {0:<32} '.format
         keysizeFormat = '{0:<30}{1:<14}'.format
 
-        txtTitle = self.PLUGIN_TITLE_FORMAT(sslVersion.upper() + ' Cipher Suites')
+        txtTitle = self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title'])
         txtOutput = []
 
-        dictTitles = [('preferredCipherSuite', 'Preferred:'),
-                      ('acceptedCipherSuites', 'Accepted:'),
-                      ('errors', 'Undefined - An unexpected error happened:'),
-                      ('rejectedCipherSuites', 'Rejected:')]
+        translate_dict = {
+            'preferredCipherSuite':'Preferred:',
+            'acceptedCipherSuites':'Accepted:',
+            'errors':'Undefined - An unexpected error happened:',
+            'rejectedCipherSuites':'Rejected:'
+        }
 
-        if self._shared_settings['hide_rejected_ciphers']:
-            dictTitles.pop(3)
-            #txtOutput.append('')
-            #txtOutput.append(titleFormat('Rejected:  Hidden'))
-
-        for (resultKey, resultTitle) in dictTitles:
-
-            # Sort the cipher suites by results
-            result_list = sorted(resultDicts[resultKey].iteritems(),
-                                 key=lambda (k,v): (v,k), reverse=True)
-
-            # Add a new line and title
-            if len(resultDicts[resultKey]) == 0: # No ciphers
-                pass # Hide empty results
-                # txtOutput.append(titleFormat(resultTitle + ' None'))
-            else:
-                #txtOutput.append('')
-                txtOutput.append(titleFormat(resultTitle))
-
-                # Add one line for each ciphers
-                for (cipherTxt, (msg, keysize)) in result_list:
-                    if keysize:
-                        # Display ANON as the key size for anonymous ciphers
-                        if 'ADH' in cipherTxt or 'AECDH' in cipherTxt:
+        # Iterate over each type of cipher result.
+        for result_type_list in results_dict['sub']:
+            if self._shared_settings['hide_rejected_ciphers'] and result_type_list['tag_name'] == 'rejectedCipherSuites':
+                continue
+            # Only care about lists with ciphers.
+            if len(result_type_list['sub']) > 0:
+                # Title.
+                txtOutput.append(titleFormat(translate_dict[result_type_list['tag_name']]))
+                # One line per cipher
+                for cipher_result in result_type_list['sub']:
+                    cipher_txt = cipher_result['attributes']['name']
+                    if cipher_result['attributes'].get('keySize', None):
+                        if cipher_result['attributes']['anonymous'] == 'True':
                             keysize = 'ANON'
                         else:
-                            keysize = str(keysize) + ' bits'
-                        cipherTxt = keysizeFormat(cipherTxt, keysize)
-
-                    txtOutput.append(cipherFormat(cipherTxt, msg))
+                            keysize = '{} bits'.format(cipher_result['attributes']['keySize'])
+                        cipher_txt = keysizeFormat(cipher_txt, keysize)
+                    txtOutput.append(cipherFormat(cipher_txt, cipher_result['attributes']['connectionStatus']))
         if txtOutput == []:
             # Server rejected all cipher suites
             txtOutput = [txtTitle, '      Server rejected all cipher suites.']
         else:
             txtOutput = [txtTitle] + txtOutput
 
-
         return txtOutput
 
-
-    @staticmethod
-    def _generate_xml_output(result_dicts, command):
-
-        xmlOutput = Element(command, title=command.upper() + ' Cipher Suites')
-
-        for (resultKey, resultDict) in result_dicts.items():
-            xmlNode = Element(resultKey)
-
-            # Sort the cipher suites by name to make the XML diff-able
-            resultList = sorted(resultDict.items(),
-                                 key=lambda (k,v): (k,v), reverse=False)
-
-            # Add one element for each ciphers
-            for (sslCipher, (msg, keysize)) in resultList:
-                cipherXmlAttr = {'name' : sslCipher, 'connectionStatus' : msg}
-                if keysize:
-                     cipherXmlAttr['keySize'] = str(keysize)
-                # Add an Anonymous attribute for anonymous ciphers
-                cipherXmlAttr['anonymous'] = str(True) if 'ADH' in sslCipher or 'AECDH' in sslCipher else str(False)
-                cipherXml = Element('cipherSuite', attrib = cipherXmlAttr)
-
-                xmlNode.append(cipherXml)
-
+    def _generate_xml_output(self, results_dict):
+        """
+        'old' logic to generate XML output.
+        """
+        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
+        # For each type of result.
+        for result_type in results_dict['sub']:
+            xmlNode = Element(result_type['tag_name'])
+            # One element per cipher.
+            for cipher in result_type['sub']:
+                xmlNode.append(Element('cipherSuite', attrib=cipher['attributes']))
             xmlOutput.append(xmlNode)
-
         return xmlOutput
 
 

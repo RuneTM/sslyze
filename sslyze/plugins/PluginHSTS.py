@@ -50,38 +50,52 @@ class PluginHSTS(PluginBase.PluginBase):
 
 
     def process_task(self, target, command, args):
-
-
         if self._shared_settings['starttls']:
             raise Exception('Cannot use --hsts with --starttls.')
 
+        hsts_header = self._get_hsts_header(target)
+        hsts_supported = True if hsts_header else None
+
+        # Results.
+        results_dict = {
+            'tag_name':'hsts',
+            'attributes':{'title':'HTTP Strict Transport Security'},
+            'sub':[{
+                'tag_name':'hsts',
+                'attributes':{'sentHstsHeader':str(hsts_supported)}
+            }]
+        }
+
+        if hsts_supported:
+            results_dict['sub'][0]['attributes']['hstsHeaderValue'] = hsts_header
+
+        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+
+    def __cli_output(self, results_dict):
+        """
+        Convert result dict into output for CLI.
+        """
         FIELD_FORMAT = '      {0:<35}{1}'.format
-
-        hsts_supported = self._get_hsts_header(target)
-        if hsts_supported:
-            hsts_timeout = hsts_supported
-            hsts_supported = True
-
-        # Text output
-        cmd_title = 'HTTP Strict Transport Security'
-        txt_result = [self.PLUGIN_TITLE_FORMAT(cmd_title)]
-        if hsts_supported:
-            txt_result.append(FIELD_FORMAT("Supported:", hsts_timeout))
+        txt_result = [self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title'])]
+        hsts_header = results_dict['sub'][0]['attributes'].get('hstsHeaderValue', None)
+        if hsts_header:
+            txt_result.append(FIELD_FORMAT("Supported:", hsts_header))
         else:
             txt_result.append(FIELD_FORMAT("Not supported: server did not send an HSTS header.", ""))
+        return txt_result
 
-        # XML output
-        xml_hsts_attr = {'sentHstsHeader': str(hsts_supported)}
-        if hsts_supported:
-            xml_hsts_attr['hstsHeaderValue'] = hsts_timeout
-        xml_hsts = Element('hsts', attrib = xml_hsts_attr)
-
-        xml_result = Element('hsts', title = cmd_title)
+    def __xml_output(self, results_dict):
+        """
+        Old code to generate XML from results_dict.
+        """
+        xml_result = Element('hsts', title=results_dict['attributes']['title'])
+        xml_hsts_attr = {'sentHstsHeader': results_dict['sub'][0]['attributes']['sentHstsHeader']}
+        hsts_header = results_dict['sub'][0]['attributes'].get('hstsHeaderValue', None)
+        if hsts_header:
+            xml_hsts_attr['hstsHeaderValue'] = hsts_header
+        xml_hsts = Element('hsts', attrib=xml_hsts_attr)
         xml_result.append(xml_hsts)
-
-        return PluginBase.PluginResult(txt_result, xml_result)
-
-
+        return xml_result
 
     def _get_hsts_header(self, target):
 

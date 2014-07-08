@@ -48,7 +48,6 @@ class PluginSessionResumption(PluginBase.PluginBase):
             "in order to estimate the session resumption rate."),
         aggressive=True)
 
-
     def process_task(self, target, command, args):
 
         if command == 'resum':
@@ -59,7 +58,6 @@ class PluginSessionResumption(PluginBase.PluginBase):
             raise Exception("PluginSessionResumption: Unknown command.")
 
         return result
-
 
     def _command_resum_rate(self, target):
         """
@@ -74,21 +72,15 @@ class PluginSessionResumption(PluginBase.PluginBase):
             thread_pool.add_job((self._resume_with_session_id, (target, )))
         thread_pool.start(NB_THREADS)
 
-        # Format session ID results
-        (txt_resum, xml_resum) = self._format_resum_id_results(thread_pool, MAX_RESUM)
-
-        # Text output
-        cmd_title = 'Resumption Rate with Session IDs'
-        txt_result = [self.PLUGIN_TITLE_FORMAT(cmd_title)+' '+ txt_resum[0]]
-        txt_result.extend(txt_resum[1:])
-
-        # XML output
-        xml_result = Element('resum_rate', title = cmd_title)
-        xml_result.append(xml_resum)
+        # Results
+        results_dict = {
+            'tag_name':'resum_rate',
+            'attributes':{'title':'Resumption Rate with Session IDs'},
+            'sub':[self.__generate_common_results(thread_pool, MAX_RESUM)]
+        }
 
         thread_pool.join()
-        return PluginBase.PluginResult(txt_result, xml_result)
-
+        return PluginBase.PluginResult(self.__cli_output_resum_rate(results_dict), self.__xml_output_resum_rate(results_dict), results_dict)
 
     def _command_resum(self, target):
         """
@@ -111,43 +103,140 @@ class PluginSessionResumption(PluginBase.PluginBase):
         except Exception as e:
             ticket_error = str(e.__class__.__name__) + ' - ' + str(e)
 
-        # Format session ID results
-        (txt_resum, xml_resum) = self._format_resum_id_results(thread_pool, MAX_RESUM)
+        # process results
+        results_dict = {
+            'tag_name':'resum',
+            'attributes':{'title':'Session Resumption'},
+            'sub':[self.__generate_common_results(thread_pool, MAX_RESUM)]
+        }
 
+        ticket_results = {
+            'tag_name':'sessionResumptionWithTLSTickets',
+            'attributes':{}
+        }
+        if ticket_error:
+            ticket_results['attributes']['error'] = ticket_error
+        else:
+            ticket_results['attributes']['isSupported'] = str(ticket_supported)
+            if not ticket_supported:
+                ticket_results['attributes']['reason'] = ticket_reason
+
+        results_dict['sub'].append(ticket_results)
+
+        thread_pool.join()
+        return PluginBase.PluginResult(self.__cli_output_command_resum(results_dict), self.__xml_output_command_resum(results_dict), results_dict)
+
+    def __cli_output_resum_rate(self, results_dict):
+        """
+        All CLI output for _command_resum_rate.
+        """
+        txt_resum = self.__cli_output_common(results_dict)
+        txt_result = ['{} {}'.format(self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title']), txt_resum[0])]
+        txt_result.extend(txt_resum[1:])
+        return txt_result
+
+    def __xml_output_resum_rate(self, results_dict):
+        """
+        All XML (old style) output for _command_resum_rate.
+        """
+        xml_result = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
+        xml_result.append(self.__xml_output_common(results_dict))
+        return xml_result
+
+    def __cli_output_command_resum(self, results_dict):
+        """
+        All CLI output for _command_resum.
+        """
+        txt_resum = self.__cli_output_common(results_dict)
+        # 2nd element is ticket results.
+        ticket_results = results_dict['sub'][1]
+        ticket_error = ticket_results['attributes'].get('error', None)
         if ticket_error:
             ticket_txt = 'ERROR: ' + ticket_error
         else:
-            ticket_txt = 'Supported' if ticket_supported \
-                                     else 'Not Supported - ' + ticket_reason+'.'
+            ticket_txt = 'Supported' if ticket_results['attributes'].get('isSupported', 'False') == 'True' \
+                                     else 'Not Supported - {}.'.format(ticket_results['attributes'].get('reason', 'No reason.'))
 
-        cmd_title = 'Session Resumption'
-        txt_result = [self.PLUGIN_TITLE_FORMAT(cmd_title)]
+        txt_result = [self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title'])]
         RESUM_FORMAT = '      {0:<35}{1}'.format
 
         txt_result.append(RESUM_FORMAT('With Session IDs:', txt_resum[0]))
         txt_result.extend(txt_resum[1:])
         txt_result.append(RESUM_FORMAT('With TLS Session Tickets:', ticket_txt))
+        return txt_result
 
-        # XML output
-        xml_resum_ticket_attr = {}
-        if ticket_error:
-            xml_resum_ticket_attr['error'] = ticket_error
-        else:
-            xml_resum_ticket_attr['isSupported'] = str(ticket_supported)
-            if not ticket_supported:
-                xml_resum_ticket_attr['reason'] = ticket_reason
-
-        xml_resum_ticket = Element('sessionResumptionWithTLSTickets', attrib = xml_resum_ticket_attr)
-        xml_result = Element('resum', title=cmd_title)
+    def __xml_output_command_resum(self, results_dict):
+        """
+        All XML (old style) output for _command_resum.
+        """
+        xml_resum = self.__xml_output_common(results_dict)
+        # 2nd element is ticket results.
+        ticket_results = results_dict['sub'][1]
+        xml_resum_ticket = Element(ticket_results['tag_name'], attrib=ticket_results['attributes'])
+        xml_result = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
         xml_result.append(xml_resum)
         xml_result.append(xml_resum_ticket)
+        return xml_result
 
-        thread_pool.join()
-        return PluginBase.PluginResult(txt_result, xml_result)
+    def __cli_output_common(self, results_dict):
+        """
+        Convert result dict into output for CLI.
+        """
+        common_results = results_dict['sub'][0]
+        # Extract information from results_dict
+        nb_failed = int(common_results['attributes']['failedAttempts'])
+        nb_error = int(common_results['attributes']['errors'])
+        nb_resum = int(common_results['attributes']['successfulAttempts'])
+        max_resum = int(common_results['attributes']['totalAttempts'])
 
+         # Text output
+        SESSID_FORMAT = '{4} ({0} successful, {1} failed, {2} errors, {3} total attempts).{5}'.format
+        sessid_try = ''
+        if nb_resum == max_resum:
+            sessid_stat = 'Supported'
+        elif nb_failed == max_resum:
+            sessid_stat = 'Not supported'
+        elif nb_error == max_resum:
+            sessid_stat = 'ERROR'
+        else:
+            sessid_stat = 'Partially supported'
+            sessid_try = ' Try --resum_rate.'
 
-    @staticmethod
-    def _format_resum_id_results(thread_pool, MAX_RESUM):
+        sessid_txt = SESSID_FORMAT(
+            common_results['attributes']['successfulAttempts'],
+            common_results['attributes']['failedAttempts'],
+            common_results['attributes']['errors'],
+            common_results['attributes']['totalAttempts'],
+            sessid_stat,
+            sessid_try)
+
+        ERRORS_FORMAT ='        ERROR #{0}: {1}'.format
+        txt_result = [sessid_txt]
+        # Add error messages
+        if len(common_results['sub']) > 0:
+            for index, error in enumerate(common_results['sub'], start=1):
+                txt_result.append(ERRORS_FORMAT(index, error['text']))
+
+        return txt_result
+
+    def __xml_output_common(self, results_dict):
+        """
+        Old code to generate XML from results_dict.
+        """
+        common_results = results_dict['sub'][0]
+        # XML output
+        xml_result = Element('sessionResumptionWithSessionIDs', attrib=common_results['attributes'])
+        # Add errors
+        for error in common_results['sub']:
+            xml_resum_error = Element('error')
+            xml_resum_error.text = error['text']
+            xml_result.append(xml_resum_error)
+        return xml_result
+
+    def __generate_common_results(self, thread_pool, MAX_RESUM):
+        """
+        This function processes the results for resumption ticked and id.
+        """
         # Count successful/failed resumptions
         nb_resum = 0
         for completed_job in thread_pool.get_result():
@@ -165,45 +254,27 @@ class PluginSessionResumption(PluginBase.PluginBase):
 
         nb_failed = MAX_RESUM - nb_error - nb_resum
 
-        # Text output
-        SESSID_FORMAT = '{4} ({0} successful, {1} failed, {2} errors, {3} total attempts).{5}'.format
-        sessid_try = ''
-        if nb_resum == MAX_RESUM:
-            sessid_stat = 'Supported'
-        elif nb_failed == MAX_RESUM:
-            sessid_stat = 'Not supported'
-        elif nb_error == MAX_RESUM:
-            sessid_stat = 'ERROR'
-        else:
-            sessid_stat = 'Partially supported'
-            sessid_try = ' Try --resum_rate.'
-        sessid_txt = SESSID_FORMAT(str(nb_resum), str(nb_failed), str(nb_error),
-                                   str(MAX_RESUM), sessid_stat, sessid_try)
+        # Results.
+        results_dict = {
+            'tag_name':'sessionResumptionWithSessionIDs',
+            'sub':[]
+        }
 
-        ERRORS_FORMAT ='        ERROR #{0}: {1}'.format
-        txt_result = [sessid_txt]
-        # Add error messages
-        if error_list:
-            i=0
-            for error_msg in error_list:
-                i+=1
-                txt_result.append(ERRORS_FORMAT(str(i), error_msg))
-
-        # XML output
-        sessid_xml = str(nb_resum == MAX_RESUM)
-        xml_resum_id_attr = {'totalAttempts':str(MAX_RESUM),
-                             'errors' : str(nb_error), 'isSupported' : sessid_xml,
-                             'successfulAttempts':str(nb_resum),'failedAttempts':str(nb_failed)}
-        xml_resum_id = Element('sessionResumptionWithSessionIDs', attrib = xml_resum_id_attr)
+        results_dict['attributes'] = {
+            'totalAttempts':str(MAX_RESUM),
+            'errors':str(nb_error),
+            'isSupported':str(nb_resum == MAX_RESUM),
+            'successfulAttempts':str(nb_resum),
+            'failedAttempts':str(nb_failed)
+        }
         # Add errors
-        if error_list:
-            for error_msg in error_list:
-                xml_resum_error = Element('error')
-                xml_resum_error.text = error_msg
-                xml_resum_id.append(xml_resum_error)
+        for error_msg in error_list:
+            results_dict['sub'].append({
+                'tag_name':'error',
+                'text':error_msg
+            })
 
-        return txt_result, xml_resum_id
-
+        return results_dict
 
     def _resume_with_session_id(self, target):
         """

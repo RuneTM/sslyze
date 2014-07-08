@@ -45,6 +45,14 @@ class InvalidTargetError(Exception):
         errorXml.text = self._target_str
         return errorXml
 
+    def get_error(self):
+        error_dict = {
+            'tag_name':'invalidTarget',
+            'attributes':{'error':self._error_msg},
+            'text':self._target_str
+        }
+        return error_dict
+
 
 
 class TargetStringParser(object):
@@ -179,6 +187,20 @@ class ServersConnectivityTester(object):
 
         return resultXml
 
+    @classmethod
+    def get_result(cls, targets_ERR):
+        """
+        Returns dict containing the list of every target that returned an error
+        during the connectivity testing.
+        """
+        failed_hosts = {
+            'tag_name':'invalidTargets',
+            'sub':[]
+        }
+        for exception in targets_ERR:
+            failed_hosts['sub'].append(exception.get_error())
+
+        return failed_hosts
 
     @classmethod
     def _test_server(cls, targetStr, shared_settings):

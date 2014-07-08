@@ -40,39 +40,77 @@ class XMLProcessor(object):
 
     def _format_xml_target_result(self, target, result_list):
         (host, ip, port, sslVersion) = target
-        target_xml = Element('target', host=host, ip=ip, port=str(port))
+        results_dict = {
+            'tag_name':'target',
+            'attributes':{
+                'host':host,
+                'ip':ip,
+                'port':str(port)
+            },
+            'sub':[]
+        }
         result_list.sort(key=lambda result: result[0]) # Sort results
 
         for (command, plugin_result) in result_list:
-            target_xml.append(plugin_result.get_xml_result())
+            results_dict['sub'].append(plugin_result.get_result())
+            #if plugin_result.get_result():
+            #    with open('newtest.xml', 'w') as tmp_file:
+            #        tmp_file.write(minidom.parseString(tostring(self.__generic_xml_outputter(plugin_result.get_result()), encoding='UTF-8')).toprettyxml(indent="  ", encoding="utf-8" ))
 
-        return target_xml
+        return results_dict
 
     def process(self, target, result_list):
         self.__tmp_results.append(self._format_xml_target_result(target, result_list))
 
     def output_results(self, shared_settings, exec_time, PROJECT_VERSION, PROJECT_URL, targets_ERR):
-        result_xml_attr = {'httpsTunnel':str(shared_settings['https_tunnel_host']),
-                           'totalScanTime' : str(exec_time),
-                           'defaultTimeout' : str(shared_settings['timeout']),
-                           'startTLS' : str(shared_settings['starttls'])}
-
-        result_xml = Element('results', attrib = result_xml_attr)
+        results_dict = {
+            'tag_name':'results',
+            'attributes':{
+                'httpsTunnel':str(shared_settings['https_tunnel_host']),
+                'totalScanTime':str(exec_time),
+                'defaultTimeout':str(shared_settings['timeout']),
+                'startTLS':str(shared_settings['starttls'])
+            },
+            'sub':[]
+        }
 
         # Sort results in alphabetical order to make the XML files (somewhat) diff-able
-        self.__tmp_results.sort(key=lambda xml_elem: xml_elem.attrib['host'])
+        self.__tmp_results.sort(key=lambda xml_elem: xml_elem['attributes']['host'])
         for xml_element in self.__tmp_results:
-            result_xml.append(xml_element)
+            results_dict['sub'].append(xml_element)
 
-        xml_final_doc = Element('document', title = "SSLyze Scan Results",
-                                SSLyzeVersion = PROJECT_VERSION,
-                                SSLyzeWeb = PROJECT_URL)
+        # Outermost level.
+        document_dict = {
+            'tag_name':'document',
+            'attributes':{
+                'title':'SSLyze Scan Results',
+                'SSLyzeVersion':PROJECT_VERSION,
+                'SSLyzeWeb':PROJECT_URL
+            },
+            'sub':[]
+        }
+
         # Add the list of invalid targets
-        xml_final_doc.append(ServersConnectivityTester.get_xml_result(targets_ERR))
+        document_dict['sub'].append(ServersConnectivityTester.get_result(targets_ERR))
         # Add the output of the plugins
-        xml_final_doc.append(result_xml)
+        document_dict['sub'].append(results_dict)
 
         # Hack: Prettify the XML file so it's (somewhat) diff-able
-        xml_final_pretty = minidom.parseString(tostring(xml_final_doc, encoding='UTF-8'))
+        xml_final_pretty = minidom.parseString(tostring(self.__generic_xml_outputter(document_dict), encoding='UTF-8'))
         with open(shared_settings['xml_file'],'w') as xml_file:
             xml_file.write(xml_final_pretty.toprettyxml(indent="  ", encoding="utf-8" ))
+
+    def __generic_xml_outputter(self, data_dict):
+        """
+        Recursive method that converts dict to xml.
+        """
+        outer_element = Element(
+            data_dict['tag_name'],
+            attrib=data_dict.get('attributes', {}))
+        text = data_dict.get('text', None)
+        if text:
+            outer_element.text = text
+        # Recurse through inner data
+        for inner_element in data_dict.get('sub', []):
+            outer_element.append(self.__generic_xml_outputter(inner_element))
+        return outer_element

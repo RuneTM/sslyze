@@ -100,7 +100,7 @@ class WorkerProcess(Process):
                               command + ': ', str(e.__class__.__module__) +
                               '.' + str(e.__class__.__name__) + ' - ' + str(e)]
                 xml_result = Element(command, exception=txt_result[1])
-                result = PluginResult(txt_result, xml_result)
+                result = PluginResult(txt_result, xml_result, None)
 
             # Send the result to queue_out
             self.queue_out.put((target, command, result))
@@ -157,7 +157,7 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
         (_, current_priority_queue) = cycle_priority_queues.next()
 
         for command in available_commands:
-            if command in shared_settings:
+            if shared_settings.get(command, None):
                 args = shared_settings[command]
 
                 if command in sslyze_plugins.get_aggressive_commands():
@@ -182,7 +182,7 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
     # Keep track of how many tasks have to be performed for each target
     task_num=0
     for command in available_commands:
-        if command in shared_settings:
+        if shared_settings.get(command, None):
             task_num+=1
 
 
@@ -198,7 +198,7 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
     while processes_running:
         result = result_queue.get()
 
-        if result is None: # Getting None means that one process was done
+        if result is None: # Getting None means that a process is done.
             processes_running -= 1
 
         else: # Getting an actual result

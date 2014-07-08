@@ -188,7 +188,6 @@ class CommandLineParser():
             action='store_true',
             default=self.SILENCE_OUTPUT)
 
-
         # Control connection retry attempts
         self._parser.add_option(
             '--nb_retries',

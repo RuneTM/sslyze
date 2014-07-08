@@ -21,12 +21,12 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-import socket, new
+import new
 from xml.etree.ElementTree import Element
 
 from sslyze.plugins import PluginBase
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
-from nassl._nassl import OpenSSLError, WantX509LookupError, WantReadError
+from nassl._nassl import WantX509LookupError, WantReadError
 from nassl import TLSV1, TLSV1_1, TLSV1_2, SSLV23, SSLV3
 
 
@@ -41,7 +41,6 @@ class PluginHeartbleed(PluginBase.PluginBase):
 
     def process_task(self, target, command, args):
 
-        OUT_FORMAT = '      {0:<35}{1}'.format
         (host, ip, port, sslVersion) = target
 
         if sslVersion == SSLV23: # Could not determine the preferred  SSL version - client cert was required ?
@@ -65,31 +64,47 @@ class PluginHeartbleed(PluginBase.PluginBase):
         finally:
             sslConn.close()
 
-        # Text output
+        # Results.
+        results_dict = {
+            'tag_name':command,
+            'attributes':{'title':'Heartbleed'},
+            'sub':[{
+                'tag_name':'heartbleed',
+                'attributes':{}
+            }]
+        }
+
         if heartbleed is None:
             raise Exception("Error: connection failed.")
         elif '\x01\x01\x01\x01\x01\x01\x01\x01\x01' in heartbleed:
-            # Server replied with our hearbeat payload
+            # Server replied with our hearbeat payload.
+            results_dict['sub'][0]['attributes']['isVulnerable'] = 'True'
+        else:
+            results_dict['sub'][0]['attributes']['isVulnerable'] = 'False'
+
+        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+
+    def __cli_output(self, results_dict):
+        """
+        Convert result dict into output for CLI.
+        """
+        OUT_FORMAT = '      {0:<35}{1}'.format
+        if results_dict['sub'][0]['attributes']['isVulnerable'] == 'True':
             heartbleedTxt = 'VULNERABLE'
-            heartbleedXml = 'True'
         else:
             heartbleedTxt = 'NOT vulnerable'
-            heartbleedXml = 'False'
-
-        cmdTitle = 'Heartbleed'
-        txtOutput = [self.PLUGIN_TITLE_FORMAT(cmdTitle)]
+        txtOutput = [self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title'])]
         txtOutput.append(OUT_FORMAT("OpenSSL Heartbleed:", heartbleedTxt))
+        return txtOutput
 
-        # XML output
-        xmlOutput = Element(command, title=cmdTitle)
-        if heartbleed:
-            xmlNode = Element('heartbleed', isVulnerable=heartbleedXml)
-            xmlOutput.append(xmlNode)
-
-        return PluginBase.PluginResult(txtOutput, xmlOutput)
-
-
-
+    def __xml_output(self, results_dict):
+        """
+        Old code to generate XML from results_dict.
+        """
+        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
+        xmlNode = Element('heartbleed', isVulnerable=results_dict['sub'][0]['attributes']['isVulnerable'])
+        xmlOutput.append(xmlNode)
+        return xmlOutput
 
 def heartbleed_payload(sslVersion):
     # This heartbleed payload does not exploit the server

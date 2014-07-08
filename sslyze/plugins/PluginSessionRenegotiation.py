@@ -40,29 +40,47 @@ class PluginSessionRenegotiation(PluginBase.PluginBase):
 
 
     def process_task(self, target, command, args):
-
         (clientReneg, secureReneg) = self._test_renegotiation(target)
+        
+        # Results.
+        results_dict = {
+            'tag_name':command,
+            'attributes':{'title':'Session Renegotiation'},
+            'sub':[{
+                'tag_name':'sessionRenegotiation',
+                'attributes':{
+                    'canBeClientInitiated' : str(clientReneg),
+                    'isSecure' : str(secureReneg)
+                    }
+            }]
+        }
 
-        # Text output
-        clientTxt = 'Honored' if clientReneg else 'Rejected'
-        secureTxt = 'Supported' if secureReneg else 'Not supported'
-        cmdTitle = 'Session Renegotiation'
-        txtOutput = [self.PLUGIN_TITLE_FORMAT(cmdTitle)]
+        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+
+    def __cli_output(self, results_dict):
+        """
+        Convert result dict into output for CLI.
+        """
+        clientTxt = 'Honored' if results_dict['sub'][0]['attributes']['canBeClientInitiated'] == 'True' else 'Rejected'
+        secureTxt = 'Supported' if results_dict['sub'][0]['attributes']['isSecure'] == 'True' else 'Not supported'
+        txtOutput = [self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title'])]
 
         outFormat = '      {0:<35}{1}'.format
         txtOutput.append(outFormat('Client-initiated Renegotiations:', clientTxt))
         txtOutput.append(outFormat('Secure Renegotiation:', secureTxt))
+        return txtOutput
 
-        # XML output
+    def __xml_output(self, results_dict):
+        """
+        Old code to generate XML from results_dict.
+        """
         xmlReneg = Element('sessionRenegotiation',
-                           attrib = {'canBeClientInitiated' : str(clientReneg),
-                                     'isSecure' : str(secureReneg)})
+                           attrib = {'canBeClientInitiated' : results_dict['sub'][0]['attributes']['canBeClientInitiated'],
+                                     'isSecure' : results_dict['sub'][0]['attributes']['isSecure']})
 
-        xmlOutput = Element(command, title=cmdTitle)
+        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
         xmlOutput.append(xmlReneg)
-
-        return PluginBase.PluginResult(txtOutput, xmlOutput)
-
+        return xmlOutput
 
     def _test_renegotiation(self, target):
         """

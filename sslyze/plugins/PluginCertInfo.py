@@ -33,7 +33,6 @@ from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl import X509_NAME_MISMATCH, X509_NAME_MATCHES_SAN, X509_NAME_MATCHES_CN
 from nassl.SslClient import ClientCertificateRequested
 
-
 TRUST_STORES_PATH = join(join(dirname(PluginBase.__file__), 'data'), 'trust_stores')
 
 # We use the Mozilla store for additional things: OCSP and EV validation
@@ -45,12 +44,9 @@ AVAILABLE_TRUST_STORES = \
       join(TRUST_STORES_PATH, 'apple.pem') :     'Apple - OS X 10.9.2',
       join(TRUST_STORES_PATH, 'java.pem') :      'Java 6 - Update 65'}
 
-
 # Import Mozilla EV OIDs
 MOZILLA_EV_OIDS = imp.load_source('mozilla_ev_oids',
                                   join(TRUST_STORES_PATH,  'mozilla_ev_oids.py')).MOZILLA_EV_OIDS
-
-
 
 class PluginCertInfo(PluginBase.PluginBase):
 
@@ -104,68 +100,193 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Store thread pool errors
         for (job, exception) in threadPool.get_error():
             (_, (_, storePath)) = job
-            errorMsg = str(exception.__class__.__name__) + ' - ' \
-                        + str(exception)
+            errorMsg = '{} - {}'.format(exception.__class__.__name__, exception)
 
             storeName = AVAILABLE_TRUST_STORES[storePath]
             verifyDictErr[storeName] = errorMsg
 
         threadPool.join()
 
-
         # Results formatting
-        # Text output - certificate info
-        outputTxt = [self.PLUGIN_TITLE_FORMAT('Certificate - Content')]
-        outputTxt.extend(textFunction(x509Cert))
+        # Primary results dict.
+        results_dict = {
+            'tag_name':command,
+            'attributes':{
+                'argument':arg,
+                'title':'Certificate Information'
+            },
+            'sub':[]
+        }
 
+        # Certificate information.
+        cert_info_results = {
+            'tag_name':'certificate',
+            'attributes':{
+                'sha1Fingerprint':x509Cert.get_SHA1_fingerprint()
+            },
+            'sub':[]
+        }
 
-        # Text output - trust validation
-        outputTxt.extend(['', self.PLUGIN_TITLE_FORMAT('Certificate - Trust')])
-
-        # Hostname validation
         if self._shared_settings['sni']:
-            outputTxt.append(self.FIELD_FORMAT("SNI enabled with virtual domain:",
-                                               self._shared_settings['sni']))
+            cert_info_results['attributes']['suppliedServerNameIndication'] = self._shared_settings['sni']
+
+        # Add certificate in PEM format.
+        cert_info_results['sub'].append({
+            'tag_name':'asPEM',
+            'text':x509Cert.as_pem().strip()
+        })
+
+        # Certificate details.
+        for (key, value) in x509Cert.as_dict().items():
+            cert_info_results['sub'].append(self.__keyvalue_pair_to_dict(key, value))
+
+        # Add results of certificate info to upper level dict.
+        results_dict['sub'].append(cert_info_results)
+
+        # Certificate validation results.
+        cert_validation_results = {
+            'tag_name':'certificateValidation',
+            'sub':[]
+        }
+
+        # Results of hostname validation.
         # TODO: Use SNI name for validation when --sni was used
         hostValDict = {
             X509_NAME_MATCHES_SAN : 'OK - Subject Alternative Name matches',
             X509_NAME_MATCHES_CN :  'OK - Common Name matches',
             X509_NAME_MISMATCH :    'FAILED - Certificate does NOT match ' + host
         }
-        outputTxt.append(self.FIELD_FORMAT("Hostname Validation:",
-                                            hostValDict[x509Cert.matches_hostname(host)]))
 
-        # Path validation that was successful
+        cert_validation_results['sub'].append({
+            'tag_name':'hostnameValidation',
+            'attributes':{
+                'serverHostname':host,
+                'certificateMatchesServerHostname':str(x509Cert.matches_hostname(host) != X509_NAME_MISMATCH),
+                'validationResult':hostValDict[x509Cert.matches_hostname(host)]
+            }
+        })
+
+        # Results of path validation - OK.
         for (storeName, verifyStr) in verifyDict.iteritems():
-            verifyTxt = 'OK - Certificate is trusted' if (verifyStr in 'ok') else 'FAILED - Certificate is NOT Trusted: ' + verifyStr
+            cert_store_results = {
+                'tag_name':'pathValidation',
+                'attributes':{
+                    'usingTrustStore':storeName,
+                    'validationResult':verifyStr
+                }
+            }
 
             # EV certs - Only Mozilla supported for now
             if (verifyStr in 'ok') and ('Mozilla' in storeName):
-                if (self._is_ev_certificate(x509Cert)):
-                    verifyTxt += ', Extended Validation'
-            outputTxt.append(self.FIELD_FORMAT(self.TRUST_FORMAT(storeName), verifyTxt))
+                cert_store_results['attributes']['isExtendedValidationCertificate'] = str(self._is_ev_certificate(x509Cert))
 
+            cert_validation_results['sub'].append(cert_store_results)
 
-        # Path validation that ran into errors
+        # Results of path validation - errors.
         for (storeName, errorMsg) in verifyDictErr.iteritems():
-            verifyTxt = 'ERROR: ' + errorMsg
-            outputTxt.append(self.FIELD_FORMAT(self.TRUST_FORMAT(storeName), verifyTxt))
+            cert_validation_results['sub'].append({
+                'tag_name':'pathValidation',
+                'attributes':{
+                    'usingTrustStore':storeName,
+                    'error':errorMsg
+                }
+            })
 
+        # Add results of certificate validation to upper level dict.
+        results_dict['sub'].append(cert_validation_results)
+
+        # OCSP stapling.
+        if ocspResp is None:
+            ocsp_results = {
+                'tag_name':'ocspStapling',
+                'attributes':{'error':'Server did not send back an OCSP response'}
+            }
+        else:
+            ocsp_results = {
+                'tag_name':'isTrustedByMozillaCAStore',
+                'attributes':{'isTrustedByMozillaCAStore':str(ocspResp.verify(MOZILLA_STORE_PATH))},
+                'sub':[]
+            }
+
+            for (key, value) in ocspResp.as_dict().items():
+                ocsp_results['sub'].append(self.__keyvalue_pair_to_dict(key, value))
+
+        # Add results of OCSP stapling to upper level dict.
+        results_dict['sub'].append(ocsp_results)
+
+        return PluginBase.PluginResult(self.__cli_output(results_dict, textFunction(x509Cert)), Element('tmp'), results_dict)
+
+    def __cli_output(self, results_dict, cert_txt):
+        """
+        Convert result dict into output for CLI.
+        """        
+        # Text output - certificate info
+        outputTxt = [self.PLUGIN_TITLE_FORMAT('Certificate - Content')]
+        outputTxt.extend(cert_txt)
+
+        # Extract results from results_dict.
+        certificate_results = results_dict['sub'][0]
+        cert_validation_results = results_dict['sub'][1]
+        ocsp_results = results_dict['sub'][2]
+        # Child dicts from primary results.
+        host_name_validation_results = cert_validation_results['sub'][0]
+
+        # Text output - trust validation
+        outputTxt.extend(['', self.PLUGIN_TITLE_FORMAT('Certificate - Trust')])
+
+        # Hostname validation
+        sni = certificate_results['attributes'].get('suppliedServerNameIndication', None)
+        if sni:
+            outputTxt.append(self.FIELD_FORMAT("SNI enabled with virtual domain:", sni))
+
+        outputTxt.append(self.FIELD_FORMAT("Hostname Validation:",
+                                            host_name_validation_results['attributes']['validationResult']))
+
+        # Path validation results
+        successful_results = []
+        failed_results = []
+
+        # Path validation is index 1 and up.
+        for cert_store_result in cert_validation_results['sub'][1:]:
+            # If succesful.
+            storeName = validation_result = cert_store_result['attributes']['usingTrustStore']
+            validation_result = cert_store_result['attributes'].get('validationResult', None)
+            if validation_result:
+                verifyTxt = 'OK - Certificate is trusted' if (validation_result in 'ok') \
+                                                            else 'FAILED - Certificate is NOT Trusted: {}'.format(validation_result)
+                # EV certs - Only Mozilla supported for now
+                if cert_store_result['attributes'].get('isExtendedValidationCertificate', None):
+                    verifyTxt += ', Extended Validation'
+
+                successful_results.append(self.FIELD_FORMAT(self.TRUST_FORMAT(storeName), verifyTxt))
+            else:
+                verifyTxt = 'ERROR: ' + cert_store_result['attributes']['error']
+                failed_results.append(self.FIELD_FORMAT(self.TRUST_FORMAT(storeName), verifyTxt))
+
+        # Add results to list.
+        outputTxt.extend(successful_results)
+        outputTxt.extend(failed_results)
 
         # Text output - OCSP stapling
         outputTxt.extend(['', self.PLUGIN_TITLE_FORMAT('Certificate - OCSP Stapling')])
-        outputTxt.extend(self._get_ocsp_text(ocspResp))
+        outputTxt.extend(self._get_ocsp_text(ocsp_results))
+        return outputTxt
 
-
+    def __xml_output(self, results_dict):
+        """
+        Old code to generate XML from results_dict.
+        """
         # XML output
-        outputXml = Element(command, argument = arg, title = 'Certificate Information')
+        outputXml = Element(results_dict['tag_name'], attrib=results_dict['attributes'])
 
-        # XML output - certificate info:  always return the full certificate
-        certAttrib = { 'sha1Fingerprint' : x509Cert.get_SHA1_fingerprint() }
-        if self._shared_settings['sni']:
-            certAttrib['suppliedServerNameIndication'] = self._shared_settings['sni']
+        # Extract results from results_dict.
+        certificate_results = results_dict['sub'][0]
+        cert_validation_results = results_dict['sub'][1]
+        ocsp_results = results_dict['sub'][2]
+        # Child dicts from primary results.
+        host_name_validation_results = cert_validation_results['sub'][0]
 
-        certXml = Element('certificate', attrib = certAttrib)
+        certXml = Element('certificate', attrib = certificate_results['attributes'])
 
         # Add certificate in PEM format
         PEMcertXml = Element('asPEM')
@@ -176,7 +297,6 @@ class PluginCertInfo(PluginBase.PluginBase):
             certXml.append(_keyvalue_pair_to_xml(key, value))
 
         outputXml.append(certXml)
-
 
         # XML output - trust
         trustXml = Element('certificateValidation')
@@ -195,20 +315,18 @@ class PluginCertInfo(PluginBase.PluginBase):
 
             # EV certs - Only Mozilla supported for now
             if (verifyStr in 'ok') and ('Mozilla' in storeName):
-                    pathXmlAttrib['isExtendedValidationCertificate'] = str(self._is_ev_certificate(x509Cert))
+                pathXmlAttrib['isExtendedValidationCertificate'] = str(self._is_ev_certificate(x509Cert))
 
-            trustXml.append(Element('pathValidation', attrib = pathXmlAttrib))
+            trustXml.append(Element('pathValidation', attrib=pathXmlAttrib))
 
         # Path validation - Errors
         for (storeName, errorMsg) in verifyDictErr.iteritems():
             pathXmlAttrib = { 'usingTrustStore' : storeName,
                               'error' : errorMsg}
 
-            trustXml.append(Element('pathValidation', attrib = pathXmlAttrib))
-
+            trustXml.append(Element('pathValidation', attrib=pathXmlAttrib))
 
         outputXml.append(trustXml)
-
 
         # XML output - OCSP Stapling
         if ocspResp is None:
@@ -222,20 +340,23 @@ class PluginCertInfo(PluginBase.PluginBase):
                 ocspXml.append(_keyvalue_pair_to_xml(key,value))
 
         outputXml.append(ocspXml)
-
-        return PluginBase.PluginResult(outputTxt, outputXml)
-
+        return outputXml
 
 # FORMATTING FUNCTIONS
 
-    def _get_ocsp_text(self, ocspResp):
+    def _get_ocsp_text(self, ocsp_results):
 
-        if ocspResp is None:
+        if ocsp_results['attributes'].get('error', None):
             return [self.FIELD_FORMAT('Not supported: server did not send back an OCSP response.', '')]
 
-        ocspRespDict = ocspResp.as_dict()
-        ocspRespTrustTxt = 'Response is Trusted' if ocspResp.verify(MOZILLA_STORE_PATH) \
-            else 'Response is NOT Trusted'
+        #ocspRespDict = ocspResp.as_dict()
+        trusted_response = ocsp_results['attributes']['isTrustedByMozillaCAStore'] == 'True'
+        ocspRespTrustTxt = 'Response is Trusted' if trusted_response else 'Response is NOT Trusted'
+
+        # Convert OCSP data from ocsp_results to old style format.
+        ocspRespDict = {}
+        for result in ocsp_results['sub']:
+            ocspRespDict[result['tag_name']] = result['text'] if not result['text'] == u'' else result['sub']
 
         ocspRespTxt = [
             self.FIELD_FORMAT('OCSP Response Status:', ocspRespDict['responseStatus']),
@@ -245,14 +366,18 @@ class PluginCertInfo(PluginBase.PluginBase):
         if 'successful' not in ocspRespDict['responseStatus']:
             return ocspRespTxt
 
+        # Convert OCSP data from ocsp_results to old style format.
+        response_dict = {}
+        for result in ocspRespDict['responses']['sub'][0]['sub']:
+            response_dict[result['tag_name']] = result['text']
+
         ocspRespTxt.extend( [
-            self.FIELD_FORMAT('Cert Status:', ocspRespDict['responses'][0]['certStatus']),
-            self.FIELD_FORMAT('Cert Serial Number:', ocspRespDict['responses'][0]['certID']['serialNumber']),
-            self.FIELD_FORMAT('This Update:', ocspRespDict['responses'][0]['thisUpdate']),
-            self.FIELD_FORMAT('Next Update:', ocspRespDict['responses'][0]['nextUpdate'])])
+            self.FIELD_FORMAT('Cert Status:', response_dict['certStatus']),
+            self.FIELD_FORMAT('Cert Serial Number:', response_dict['certID']['serialNumber']),
+            self.FIELD_FORMAT('This Update:', response_dict['thisUpdate']),
+            self.FIELD_FORMAT('Next Update:', response_dict['nextUpdate'])])
 
         return ocspRespTxt
-
 
     @staticmethod
     def _is_ev_certificate(cert):
@@ -265,11 +390,8 @@ class PluginCertInfo(PluginBase.PluginBase):
             return False
         return False
 
-
-    @staticmethod
-    def _get_full_text(cert):
+    def _get_full_text(self, cert):
         return [cert.as_text()]
-
 
     def _get_basic_text(self, cert):
         certDict = cert.as_dict()
@@ -297,7 +419,6 @@ class PluginCertInfo(PluginBase.PluginBase):
             pass
 
         return basicTxt
-
 
     def _get_cert(self, target, storePath):
         """
@@ -331,6 +452,50 @@ class PluginCertInfo(PluginBase.PluginBase):
 
         return (x509Cert, verifyStr, ocspResp)
 
+    # Result generation.
+    def __create_node(self, key, value=''):
+        """
+        Create a node for results dict.
+        """
+        key = key.replace(' ', '').strip() # Remove spaces
+        key = key.replace('/', '').strip() # Remove slashes (S/MIME Capabilities)
+
+        # Things that would generate invalid XML
+        if key[0].isdigit(): # Tags cannot start with a digit
+                key = 'oid-' + key
+
+        node_results = {
+            'tag_name':key,
+            'text':value.decode('utf-8').strip()
+        }
+        return node_results
+
+    def __keyvalue_pair_to_dict(self, key, value=''):
+
+        if type(value) is str: # value is a string
+            key_results = self.__create_node(key, value)
+
+        elif type(value) is int:
+            key_results = self.__create_node(key, str(value))
+
+        elif value is None: # no value
+            key_results = self.__create_node(key)
+
+        elif type(value) is list:
+            key_results = self.__create_node(key)
+            key_results['sub'] = []
+            for val in value:
+                key_results['sub'].append(self.__keyvalue_pair_to_dict('listEntry', val))
+
+        elif type(value) is dict: # value is a list of subnodes
+            key_results = self.__create_node(key)
+            key_results['sub'] = []
+            for subkey, subvalue in value.items():
+                key_results['sub'].append(self.__keyvalue_pair_to_dict(subkey, subvalue))
+        else:
+            raise Exception()
+
+        return key_results
 
 # XML generation
 def _create_xml_node(key, value=''):
@@ -344,7 +509,6 @@ def _create_xml_node(key, value=''):
     xml_node = Element(key)
     xml_node.text = value.decode( "utf-8" ).strip()
     return xml_node
-
 
 def _keyvalue_pair_to_xml(key, value=''):
 
@@ -370,4 +534,3 @@ def _keyvalue_pair_to_xml(key, value=''):
         raise Exception()
 
     return key_xml
-

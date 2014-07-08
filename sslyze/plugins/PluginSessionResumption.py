@@ -20,11 +20,9 @@
 #   You should have received a copy of the GNU General Public License
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
-from xml.etree.ElementTree import Element
 
 from sslyze.plugins import PluginBase
 from sslyze.utils.ThreadPool import ThreadPool
-
 from nassl import SSL_OP_NO_TICKET
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 
@@ -74,13 +72,13 @@ class PluginSessionResumption(PluginBase.PluginBase):
 
         # Results
         results_dict = {
-            'tag_name':'resum_rate',
+            'name':'resum_rate',
             'attributes':{'title':'Resumption Rate with Session IDs'},
             'sub':[self.__generate_common_results(thread_pool, MAX_RESUM)]
         }
 
         thread_pool.join()
-        return PluginBase.PluginResult(self.__cli_output_resum_rate(results_dict), self.__xml_output_resum_rate(results_dict), results_dict)
+        return PluginBase.PluginResult(self.__cli_output_resum_rate(results_dict), results_dict)
 
     def _command_resum(self, target):
         """
@@ -105,13 +103,13 @@ class PluginSessionResumption(PluginBase.PluginBase):
 
         # process results
         results_dict = {
-            'tag_name':'resum',
+            'name':'resum',
             'attributes':{'title':'Session Resumption'},
             'sub':[self.__generate_common_results(thread_pool, MAX_RESUM)]
         }
 
         ticket_results = {
-            'tag_name':'sessionResumptionWithTLSTickets',
+            'name':'sessionResumptionWithTLSTickets',
             'attributes':{}
         }
         if ticket_error:
@@ -124,7 +122,7 @@ class PluginSessionResumption(PluginBase.PluginBase):
         results_dict['sub'].append(ticket_results)
 
         thread_pool.join()
-        return PluginBase.PluginResult(self.__cli_output_command_resum(results_dict), self.__xml_output_command_resum(results_dict), results_dict)
+        return PluginBase.PluginResult(self.__cli_output_command_resum(results_dict), results_dict)
 
     def __cli_output_resum_rate(self, results_dict):
         """
@@ -134,14 +132,6 @@ class PluginSessionResumption(PluginBase.PluginBase):
         txt_result = ['{} {}'.format(self.PLUGIN_TITLE_FORMAT(results_dict['attributes']['title']), txt_resum[0])]
         txt_result.extend(txt_resum[1:])
         return txt_result
-
-    def __xml_output_resum_rate(self, results_dict):
-        """
-        All XML (old style) output for _command_resum_rate.
-        """
-        xml_result = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
-        xml_result.append(self.__xml_output_common(results_dict))
-        return xml_result
 
     def __cli_output_command_resum(self, results_dict):
         """
@@ -164,19 +154,6 @@ class PluginSessionResumption(PluginBase.PluginBase):
         txt_result.extend(txt_resum[1:])
         txt_result.append(RESUM_FORMAT('With TLS Session Tickets:', ticket_txt))
         return txt_result
-
-    def __xml_output_command_resum(self, results_dict):
-        """
-        All XML (old style) output for _command_resum.
-        """
-        xml_resum = self.__xml_output_common(results_dict)
-        # 2nd element is ticket results.
-        ticket_results = results_dict['sub'][1]
-        xml_resum_ticket = Element(ticket_results['tag_name'], attrib=ticket_results['attributes'])
-        xml_result = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
-        xml_result.append(xml_resum)
-        xml_result.append(xml_resum_ticket)
-        return xml_result
 
     def __cli_output_common(self, results_dict):
         """
@@ -219,20 +196,6 @@ class PluginSessionResumption(PluginBase.PluginBase):
 
         return txt_result
 
-    def __xml_output_common(self, results_dict):
-        """
-        Old code to generate XML from results_dict.
-        """
-        common_results = results_dict['sub'][0]
-        # XML output
-        xml_result = Element('sessionResumptionWithSessionIDs', attrib=common_results['attributes'])
-        # Add errors
-        for error in common_results['sub']:
-            xml_resum_error = Element('error')
-            xml_resum_error.text = error['text']
-            xml_result.append(xml_resum_error)
-        return xml_result
-
     def __generate_common_results(self, thread_pool, MAX_RESUM):
         """
         This function processes the results for resumption ticked and id.
@@ -256,7 +219,7 @@ class PluginSessionResumption(PluginBase.PluginBase):
 
         # Results.
         results_dict = {
-            'tag_name':'sessionResumptionWithSessionIDs',
+            'name':'sessionResumptionWithSessionIDs',
             'sub':[]
         }
 
@@ -270,7 +233,7 @@ class PluginSessionResumption(PluginBase.PluginBase):
         # Add errors
         for error_msg in error_list:
             results_dict['sub'].append({
-                'tag_name':'error',
+                'name':'error',
                 'text':error_msg
             })
 

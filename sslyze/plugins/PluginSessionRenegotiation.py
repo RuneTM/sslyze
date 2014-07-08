@@ -22,7 +22,6 @@
 #-------------------------------------------------------------------------------
 
 import socket
-from xml.etree.ElementTree import Element
 
 from sslyze.plugins import PluginBase
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
@@ -44,10 +43,10 @@ class PluginSessionRenegotiation(PluginBase.PluginBase):
         
         # Results.
         results_dict = {
-            'tag_name':command,
+            'name':command,
             'attributes':{'title':'Session Renegotiation'},
             'sub':[{
-                'tag_name':'sessionRenegotiation',
+                'name':'sessionRenegotiation',
                 'attributes':{
                     'canBeClientInitiated' : str(clientReneg),
                     'isSecure' : str(secureReneg)
@@ -55,7 +54,7 @@ class PluginSessionRenegotiation(PluginBase.PluginBase):
             }]
         }
 
-        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+        return PluginBase.PluginResult(self.__cli_output(results_dict), results_dict)
 
     def __cli_output(self, results_dict):
         """
@@ -69,18 +68,6 @@ class PluginSessionRenegotiation(PluginBase.PluginBase):
         txtOutput.append(outFormat('Client-initiated Renegotiations:', clientTxt))
         txtOutput.append(outFormat('Secure Renegotiation:', secureTxt))
         return txtOutput
-
-    def __xml_output(self, results_dict):
-        """
-        Old code to generate XML from results_dict.
-        """
-        xmlReneg = Element('sessionRenegotiation',
-                           attrib = {'canBeClientInitiated' : results_dict['sub'][0]['attributes']['canBeClientInitiated'],
-                                     'isSecure' : results_dict['sub'][0]['attributes']['isSecure']})
-
-        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
-        xmlOutput.append(xmlReneg)
-        return xmlOutput
 
     def _test_renegotiation(self, target):
         """

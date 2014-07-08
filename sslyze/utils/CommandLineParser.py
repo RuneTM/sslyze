@@ -162,6 +162,12 @@ class CommandLineParser():
             help='Writes the scan results as an XML document to the file XML_FILE.',
             dest='xml_file',
             default=None)
+        # JSON output
+        self._parser.add_option(
+            '--json_out',
+            help='Writes the scan results as an JSON document to the file JSON_FILE.',
+            dest='json_file',
+            default=None)
 
         # Read targets from input file
         self._parser.add_option(

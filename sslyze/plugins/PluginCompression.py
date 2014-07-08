@@ -21,12 +21,9 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from xml.etree.ElementTree import Element
-
 from sslyze.plugins import PluginBase
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl.SslClient import ClientCertificateRequested
-
 
 class PluginCompression(PluginBase.PluginBase):
 
@@ -52,16 +49,16 @@ class PluginCompression(PluginBase.PluginBase):
 
         # Results.
         results_dict = {
-            'tag_name':command,
+            'name':command,
             'attributes':{'title':'Compression'},
         }
 
         if compName:
             results_dict['sub'] = [{
-                'tag_name':'compressionMethod',
+                'name':'compressionMethod',
                 'attributes':{'type':'DEFLATE'}
             }]
-        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+        return PluginBase.PluginResult(self.__cli_output(results_dict), results_dict)
 
     def __cli_output(self, results_dict):
         """
@@ -76,14 +73,3 @@ class PluginCompression(PluginBase.PluginBase):
         txtOutput.append(OUT_FORMAT("DEFLATE Compression:", compTxt))
         #print txtOutput
         return txtOutput
-
-    def __xml_output(self, results_dict):
-        """
-        Old code to generate XML from results_dict.
-        """
-        # XML output
-        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
-        if results_dict.get('sub', None):
-            xmlNode = Element('compressionMethod', type="DEFLATE")
-            xmlOutput.append(xmlNode)
-        return xmlOutput

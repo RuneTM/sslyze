@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 #-------------------------------------------------------------------------------
-# Name:         sslyze.py
-# Purpose:      Main module of SSLyze.
+# Name:         OutputClasses.py
+# Purpose:      Controls what output is printed.
 #
-# Author:       aaron, alban, RuneTM
+# Author:       aaron, alban
 #
 # Copyright:    2014 SSLyze developers
 #
@@ -29,7 +29,6 @@ except ImportError:
     'Please download the right pre-compiled package as described in the README.'
     sys.exit()
 
-# Todo: Move formatting stuff to another file
 SCAN_FORMAT = 'Scan Results For {0}:{1} - {2}:{1}'
 
 def _format_title(title):
@@ -41,13 +40,12 @@ def _format_txt_target_result(target, result_list):
 
     for (command, plugin_result) in result_list:
         # Print the result of each separate command
-        target_result_str += '\n'
+        target_result_str = '{}\n'.format(target_result_str)
         for line in plugin_result.get_txt_result():
-            target_result_str += line + '\n'
+            target_result_str = '{}{}\n'.format(target_result_str, line)
 
-    scan_txt = SCAN_FORMAT.format(host, str(port), ip)
-    return _format_title(scan_txt) + '\n' + target_result_str + '\n\n'
-
+    scan_txt = SCAN_FORMAT.format(host, port, ip)
+    return '{}\n{}\n\n'.format(_format_title(scan_txt), target_result_str)
 
 class RegularOutput(object):
     """This output class prints output to console."""

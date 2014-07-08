@@ -21,8 +21,6 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from xml.etree.ElementTree import Element
-
 from sslyze.plugins import PluginBase
 from sslyze.utils.ThreadPool import ThreadPool
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
@@ -125,7 +123,7 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
 
         # Results.
         results_dict = {
-                'tag_name':command,
+                'name':command,
                 'attributes':{'title':'{} Cipher Suites'.format(command.upper())},
                 'sub':[]
             }
@@ -133,20 +131,18 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
         # Sort cipher results and append to results dict.
         for result_type, cipher_result in cipher_result_dicts.items():
             results_dict['sub'].append({
-                'tag_name':result_type,
+                'name':result_type,
                 'sub':sorted(cipher_result, key=lambda cipher: cipher['attributes']['name'])
             })
             
-        return PluginBase.PluginResult(self._generate_text_output(results_dict),
-                                       self._generate_xml_output(results_dict),
-                                       results_dict)
+        return PluginBase.PluginResult(self._generate_text_output(results_dict), results_dict)
 
     def __process_cipher_data(self, cipher_name, msg, keysize):
         """
         Prepare data for cipher result dict.
         """
         tmp_cipher_result = {
-            'tag_name':'cipherSuite',
+            'name':'cipherSuite',
             'attributes':{
                 'name':cipher_name,
                 'connectionStatus':msg,
@@ -156,43 +152,6 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
         if keysize:
             tmp_cipher_result['attributes']['keySize'] = str(keysize)
         return tmp_cipher_result
-
-    def _generate_final_results(self, results_dict, command):
-        # TODO: REMOVE is now obsolete.
-        final_results = {
-                'tag_name':command,
-                'attributes':{'title':'{} Cipher Suites'.format(command.upper())},
-                'sub':[]
-            }
-
-        for (resultKey, resultDict) in results_dict.items():
-            tmp_results_dict = {
-                    'tag_name':resultKey,
-                    'sub':[]
-                }
-
-            # Sort the cipher suites by name to make the XML diff-able
-            resultList = sorted(resultDict.items(),
-                                 key=lambda (k,v): (k,v), reverse=False)
-
-            # Add one element for each cipher
-            for (sslCipher, (msg, keysize)) in resultList:
-                tmp_cipher_result = {
-                    'tag_name':'cipherSuite',
-                    'attributes':{
-                        'name':sslCipher,
-                        'connectionStatus':msg,
-                        'anonymous':str(True) if 'ADH' in sslCipher or 'AECDH' in sslCipher else str(False)
-                    }
-                }
-                if keysize:
-                    tmp_cipher_result['attributes']['keySize'] = str(keysize)
-                tmp_results_dict['sub'].append(tmp_cipher_result)
-            final_results['sub'].append(tmp_results_dict)
-        return final_results
-
-
-# == INTERNAL FUNCTIONS ==
 
 # FORMATTING FUNCTIONS
     def _generate_text_output(self, results_dict):
@@ -213,12 +172,12 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
 
         # Iterate over each type of cipher result.
         for result_type_list in results_dict['sub']:
-            if self._shared_settings['hide_rejected_ciphers'] and result_type_list['tag_name'] == 'rejectedCipherSuites':
+            if self._shared_settings['hide_rejected_ciphers'] and result_type_list['name'] == 'rejectedCipherSuites':
                 continue
             # Only care about lists with ciphers.
             if len(result_type_list['sub']) > 0:
                 # Title.
-                txtOutput.append(titleFormat(translate_dict[result_type_list['tag_name']]))
+                txtOutput.append(titleFormat(translate_dict[result_type_list['name']]))
                 # One line per cipher
                 for cipher_result in result_type_list['sub']:
                     cipher_txt = cipher_result['attributes']['name']
@@ -236,21 +195,6 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
             txtOutput = [txtTitle] + txtOutput
 
         return txtOutput
-
-    def _generate_xml_output(self, results_dict):
-        """
-        'old' logic to generate XML output.
-        """
-        xmlOutput = Element(results_dict['tag_name'], title=results_dict['attributes']['title'])
-        # For each type of result.
-        for result_type in results_dict['sub']:
-            xmlNode = Element(result_type['tag_name'])
-            # One element per cipher.
-            for cipher in result_type['sub']:
-                xmlNode.append(Element('cipherSuite', attrib=cipher['attributes']))
-            xmlOutput.append(xmlNode)
-        return xmlOutput
-
 
 # SSL FUNCTIONS
     def _test_ciphersuite(self, target, ssl_version, ssl_cipher):
@@ -299,4 +243,3 @@ class PluginOpenSSLCipherSuites(PluginBase.PluginBase):
 
         finally:
             sslConn.close()
-

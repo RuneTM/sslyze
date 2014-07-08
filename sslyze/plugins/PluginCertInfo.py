@@ -25,7 +25,6 @@
 
 from os.path import join, dirname
 import imp
-from xml.etree.ElementTree import Element
 
 from sslyze.plugins import PluginBase
 from sslyze.utils.ThreadPool import ThreadPool
@@ -110,7 +109,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Results formatting
         # Primary results dict.
         results_dict = {
-            'tag_name':command,
+            'name':command,
             'attributes':{
                 'argument':arg,
                 'title':'Certificate Information'
@@ -120,7 +119,7 @@ class PluginCertInfo(PluginBase.PluginBase):
 
         # Certificate information.
         cert_info_results = {
-            'tag_name':'certificate',
+            'name':'certificate',
             'attributes':{
                 'sha1Fingerprint':x509Cert.get_SHA1_fingerprint()
             },
@@ -132,7 +131,7 @@ class PluginCertInfo(PluginBase.PluginBase):
 
         # Add certificate in PEM format.
         cert_info_results['sub'].append({
-            'tag_name':'asPEM',
+            'name':'asPEM',
             'text':x509Cert.as_pem().strip()
         })
 
@@ -145,7 +144,7 @@ class PluginCertInfo(PluginBase.PluginBase):
 
         # Certificate validation results.
         cert_validation_results = {
-            'tag_name':'certificateValidation',
+            'name':'certificateValidation',
             'sub':[]
         }
 
@@ -158,7 +157,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         }
 
         cert_validation_results['sub'].append({
-            'tag_name':'hostnameValidation',
+            'name':'hostnameValidation',
             'attributes':{
                 'serverHostname':host,
                 'certificateMatchesServerHostname':str(x509Cert.matches_hostname(host) != X509_NAME_MISMATCH),
@@ -169,7 +168,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Results of path validation - OK.
         for (storeName, verifyStr) in verifyDict.iteritems():
             cert_store_results = {
-                'tag_name':'pathValidation',
+                'name':'pathValidation',
                 'attributes':{
                     'usingTrustStore':storeName,
                     'validationResult':verifyStr
@@ -185,7 +184,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Results of path validation - errors.
         for (storeName, errorMsg) in verifyDictErr.iteritems():
             cert_validation_results['sub'].append({
-                'tag_name':'pathValidation',
+                'name':'pathValidation',
                 'attributes':{
                     'usingTrustStore':storeName,
                     'error':errorMsg
@@ -198,12 +197,12 @@ class PluginCertInfo(PluginBase.PluginBase):
         # OCSP stapling.
         if ocspResp is None:
             ocsp_results = {
-                'tag_name':'ocspStapling',
+                'name':'ocspStapling',
                 'attributes':{'error':'Server did not send back an OCSP response'}
             }
         else:
             ocsp_results = {
-                'tag_name':'isTrustedByMozillaCAStore',
+                'name':'ocspResponse',
                 'attributes':{'isTrustedByMozillaCAStore':str(ocspResp.verify(MOZILLA_STORE_PATH))},
                 'sub':[]
             }
@@ -214,7 +213,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Add results of OCSP stapling to upper level dict.
         results_dict['sub'].append(ocsp_results)
 
-        return PluginBase.PluginResult(self.__cli_output(results_dict, textFunction(x509Cert)), Element('tmp'), results_dict)
+        return PluginBase.PluginResult(self.__cli_output(results_dict, textFunction(x509Cert)), results_dict)
 
     def __cli_output(self, results_dict, cert_txt):
         """
@@ -255,7 +254,8 @@ class PluginCertInfo(PluginBase.PluginBase):
                 verifyTxt = 'OK - Certificate is trusted' if (validation_result in 'ok') \
                                                             else 'FAILED - Certificate is NOT Trusted: {}'.format(validation_result)
                 # EV certs - Only Mozilla supported for now
-                if cert_store_result['attributes'].get('isExtendedValidationCertificate', None):
+                is_extended_validation_cert = cert_store_result['attributes'].get('isExtendedValidationCertificate', None)
+                if is_extended_validation_cert and is_extended_validation_cert == 'True':
                     verifyTxt += ', Extended Validation'
 
                 successful_results.append(self.FIELD_FORMAT(self.TRUST_FORMAT(storeName), verifyTxt))
@@ -272,76 +272,6 @@ class PluginCertInfo(PluginBase.PluginBase):
         outputTxt.extend(self._get_ocsp_text(ocsp_results))
         return outputTxt
 
-    def __xml_output(self, results_dict):
-        """
-        Old code to generate XML from results_dict.
-        """
-        # XML output
-        outputXml = Element(results_dict['tag_name'], attrib=results_dict['attributes'])
-
-        # Extract results from results_dict.
-        certificate_results = results_dict['sub'][0]
-        cert_validation_results = results_dict['sub'][1]
-        ocsp_results = results_dict['sub'][2]
-        # Child dicts from primary results.
-        host_name_validation_results = cert_validation_results['sub'][0]
-
-        certXml = Element('certificate', attrib = certificate_results['attributes'])
-
-        # Add certificate in PEM format
-        PEMcertXml = Element('asPEM')
-        PEMcertXml.text = x509Cert.as_pem().strip()
-        certXml.append(PEMcertXml)
-
-        for (key, value) in x509Cert.as_dict().items():
-            certXml.append(_keyvalue_pair_to_xml(key, value))
-
-        outputXml.append(certXml)
-
-        # XML output - trust
-        trustXml = Element('certificateValidation')
-
-        # Hostname validation
-        hostValBool = 'False' if (x509Cert.matches_hostname(host) == X509_NAME_MISMATCH) \
-                              else 'True'
-        hostXml = Element('hostnameValidation', serverHostname = host,
-                           certificateMatchesServerHostname = hostValBool)
-        trustXml.append(hostXml)
-
-        # Path validation - OK
-        for (storeName, verifyStr) in verifyDict.iteritems():
-            pathXmlAttrib = { 'usingTrustStore' : storeName,
-                              'validationResult' : verifyStr}
-
-            # EV certs - Only Mozilla supported for now
-            if (verifyStr in 'ok') and ('Mozilla' in storeName):
-                pathXmlAttrib['isExtendedValidationCertificate'] = str(self._is_ev_certificate(x509Cert))
-
-            trustXml.append(Element('pathValidation', attrib=pathXmlAttrib))
-
-        # Path validation - Errors
-        for (storeName, errorMsg) in verifyDictErr.iteritems():
-            pathXmlAttrib = { 'usingTrustStore' : storeName,
-                              'error' : errorMsg}
-
-            trustXml.append(Element('pathValidation', attrib=pathXmlAttrib))
-
-        outputXml.append(trustXml)
-
-        # XML output - OCSP Stapling
-        if ocspResp is None:
-            oscpAttr =  {'error' : 'Server did not send back an OCSP response'}
-            ocspXml = Element('ocspStapling', attrib = oscpAttr)
-        else:
-            oscpAttr =  {'isTrustedByMozillaCAStore' : str(ocspResp.verify(MOZILLA_STORE_PATH))}
-            ocspXml = Element('ocspResponse', attrib = oscpAttr)
-
-            for (key, value) in ocspResp.as_dict().items():
-                ocspXml.append(_keyvalue_pair_to_xml(key,value))
-
-        outputXml.append(ocspXml)
-        return outputXml
-
 # FORMATTING FUNCTIONS
 
     def _get_ocsp_text(self, ocsp_results):
@@ -356,7 +286,7 @@ class PluginCertInfo(PluginBase.PluginBase):
         # Convert OCSP data from ocsp_results to old style format.
         ocspRespDict = {}
         for result in ocsp_results['sub']:
-            ocspRespDict[result['tag_name']] = result['text'] if not result['text'] == u'' else result['sub']
+            ocspRespDict[result['name']] = result['text'] if not result['text'] == u'' else result['sub']
 
         ocspRespTxt = [
             self.FIELD_FORMAT('OCSP Response Status:', ocspRespDict['responseStatus']),
@@ -368,12 +298,19 @@ class PluginCertInfo(PluginBase.PluginBase):
 
         # Convert OCSP data from ocsp_results to old style format.
         response_dict = {}
-        for result in ocspRespDict['responses']['sub'][0]['sub']:
-            response_dict[result['tag_name']] = result['text']
+        for result in ocspRespDict['responses'][0]['sub']:
+            # Special case, extract serial number.
+            if result['name'] == 'certID':
+                try:
+                    response_dict[result['name']] = next(cert_id_info['text'] for cert_id_info in result['sub'] if cert_id_info['name'] == 'serialNumber')
+                except StopIteration:
+                    raise Exception('Something went wront during OCSP validation.')
+            else:
+                response_dict[result['name']] = result['text']
 
         ocspRespTxt.extend( [
             self.FIELD_FORMAT('Cert Status:', response_dict['certStatus']),
-            self.FIELD_FORMAT('Cert Serial Number:', response_dict['certID']['serialNumber']),
+            self.FIELD_FORMAT('Cert Serial Number:', response_dict['certID']),
             self.FIELD_FORMAT('This Update:', response_dict['thisUpdate']),
             self.FIELD_FORMAT('Next Update:', response_dict['nextUpdate'])])
 
@@ -465,7 +402,7 @@ class PluginCertInfo(PluginBase.PluginBase):
                 key = 'oid-' + key
 
         node_results = {
-            'tag_name':key,
+            'name':key,
             'text':value.decode('utf-8').strip()
         }
         return node_results
@@ -496,41 +433,3 @@ class PluginCertInfo(PluginBase.PluginBase):
             raise Exception()
 
         return key_results
-
-# XML generation
-def _create_xml_node(key, value=''):
-    key = key.replace(' ', '').strip() # Remove spaces
-    key = key.replace('/', '').strip() # Remove slashes (S/MIME Capabilities)
-
-    # Things that would generate invalid XML
-    if key[0].isdigit(): # Tags cannot start with a digit
-            key = 'oid-' + key
-
-    xml_node = Element(key)
-    xml_node.text = value.decode( "utf-8" ).strip()
-    return xml_node
-
-def _keyvalue_pair_to_xml(key, value=''):
-
-    if type(value) is str: # value is a string
-        key_xml = _create_xml_node(key, value)
-
-    elif type(value) is int:
-        key_xml = _create_xml_node(key, str(value))
-
-    elif value is None: # no value
-        key_xml = _create_xml_node(key)
-
-    elif type(value) is list:
-        key_xml = _create_xml_node(key)
-        for val in value:
-            key_xml.append(_keyvalue_pair_to_xml('listEntry', val))
-
-    elif type(value) is dict: # value is a list of subnodes
-        key_xml = _create_xml_node(key)
-        for subkey in value.keys():
-            key_xml.append(_keyvalue_pair_to_xml(subkey, value[subkey]))
-    else:
-        raise Exception()
-
-    return key_xml

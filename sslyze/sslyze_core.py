@@ -24,21 +24,18 @@
 from time import time
 from itertools import cycle
 from multiprocessing import Process, JoinableQueue
-from xml.etree.ElementTree import Element
-from utils.OutputClasses import RegularOutput, NoOutput
-from utils.OutputProcessors import XMLProcessor
+from sslyze.utils.OutputClasses import NoOutput
+from sslyze.utils.OutputProcessors import XMLProcessor, JSONProcessor
 import sys
 
-from plugins import PluginsFinder
+from sslyze.plugins import PluginsFinder
 
 try:
-    from utils.CommandLineParser import CommandLineParser, CommandLineParsingError
-    from utils.ServersConnectivityTester import ServersConnectivityTester
+    from sslyze.utils.ServersConnectivityTester import ServersConnectivityTester
 except ImportError:
     print '\nERROR: Could not import nassl Python module. Did you clone SSLyze\'s repo ? \n' +\
     'Please download the right pre-compiled package as described in the README.'
     sys.exit()
-
 
 PROJECT_VERSION = 'SSLyze v1.0 dev'
 PROJECT_URL = "https://github.com/isecPartners/sslyze"
@@ -47,7 +44,6 @@ PROJECT_DESC = 'Fast and full-featured SSL scanner'
 
 MAX_PROCESSES = 12
 MIN_PROCESSES = 3
-
 
 class WorkerProcess(Process):
 
@@ -65,7 +61,7 @@ class WorkerProcess(Process):
         Once it gets notified that all the tasks have been completed,
         it terminates.
         """
-        from plugins.PluginBase import PluginResult
+        from sslyze.plugins.PluginBase import PluginResult
         # Plugin classes are unpickled by the multiprocessing module
         # without state info. Need to assign shared_settings here
         for plugin_class in self.available_commands.itervalues():
@@ -94,13 +90,15 @@ class WorkerProcess(Process):
 
             try: # Process the task
                 result = plugin_instance.process_task(target, command, args)
-            except Exception as e: # Generate txt and xml results
-                #raise
-                txt_result = ['Unhandled exception when processing --' +
-                              command + ': ', str(e.__class__.__module__) +
-                              '.' + str(e.__class__.__name__) + ' - ' + str(e)]
-                xml_result = Element(command, exception=txt_result[1])
-                result = PluginResult(txt_result, xml_result, None)
+            except Exception as e: # Generate results.
+                txt_result = [
+                    'Unhandled exception when processing --{}: '.format(command),
+                    '{}.{} - {}'.format(e.__class__.__module__, e.__class__.__name__, e)]
+                generic_result_data = {
+                    'name':command,
+                    'attributes':{'exception':txt_result[1]}
+                }
+                result = PluginResult(txt_result, generic_result_data)
 
             # Send the result to queue_out
             self.queue_out.put((target, command, result))
@@ -117,6 +115,8 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
     result_processors = []
     if shared_settings['xml_file']:
         result_processors.append(XMLProcessor())
+    if shared_settings['json_file']:
+        result_processors.append(JSONProcessor())
 
     #--PROCESSES INITIALIZATION--
     # Three processes per target from MIN_PROCESSES up to MAX_PROCESSES
@@ -185,14 +185,37 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
         if shared_settings.get(command, None):
             task_num+=1
 
-
     # --REPORTING SECTION--
     processes_running = nb_processes
 
+    # Results.
+    document_dict = {
+        'name':'document',
+        'attributes':{
+            'title':'SSLyze Scan Results',
+            'SSLyzeVersion':PROJECT_VERSION,
+            'SSLyzeWeb':PROJECT_URL
+        },
+        'sub':[]
+    }
+
+    # Add the list of invalid targets.
+    document_dict['sub'].append(ServersConnectivityTester.get_result(targets_ERR))
+
+    results_dict = {
+        'name':'results',
+        'attributes':{
+            'httpsTunnel':str(shared_settings['https_tunnel_host']),
+            'defaultTimeout':str(shared_settings['timeout']),
+            'startTLS':str(shared_settings['starttls'])
+        },
+        'sub':[]
+    }
+
     # Each host has a list of results
-    result_dict = {}
+    tmp_result_dict = {}
     for target in targets_OK:
-        result_dict[target] = []
+        tmp_result_dict[target] = []
 
     # If all processes have stopped, all the work is done
     while processes_running:
@@ -203,31 +226,56 @@ def main(start_time, output, target_list, shared_settings, sslyze_plugins, avail
 
         else: # Getting an actual result
             (target, command, plugin_result) = result
-            result_dict[target].append((command, plugin_result))
+            tmp_result_dict[target].append((command, plugin_result))
 
-            if len(result_dict[target]) == task_num: # Done with this target
+            if len(tmp_result_dict[target]) == task_num: # Done with this target
                 # Print the results and update the xml doc
-                output.results(target, result_dict[target])
-                for processor in result_processors:
-                    processor.process(target, result_dict[target])
+                output.results(target, tmp_result_dict[target])
 
         result_queue.task_done()
 
-    # --TERMINATE--
+    # Process results from intermediary dict.
+    # Save to final results dict.
+    for target, results_list in tmp_result_dict.items():
+        (host, ip, port, sslVersion) = target
+        target_results = {
+            'name':'target',
+            'attributes':{
+                'host':host,
+                'ip':ip,
+                'port':str(port)
+            },
+            'sub':[]
+        }
+        # Sort results by command.
+        results_list.sort(key=lambda result: result[0])
+        # Add plugin results to list for this target.
+        for (command, plugin_result) in results_list:
+            target_results['sub'].append(plugin_result.get_result())
+        results_dict['sub'].append(target_results)
 
+    # Sort results (by host) in alphabetical order to make the XML files (somewhat) diff-able
+    results_dict['sub'].sort(key=lambda result: result['attributes']['host'])
+
+    # --TERMINATE--
     # Make sure all the processes had time to terminate
     task_queue.join()
     result_queue.join()
     #[process.join() for process in process_list] # Causes interpreter shutdown errors
-    exec_time = time()-start_time
+
+    # Final processing of results.
+    exec_time = time() - start_time
+    results_dict['attributes']['totalScanTime'] = str(exec_time)
+    # Add the output of the scan(s).
+    document_dict['sub'].append(results_dict)
 
     # Output data if required.
     for processor in result_processors:
-        processor.output_results(shared_settings, exec_time, PROJECT_VERSION, PROJECT_URL, targets_ERR)
+        processor.output_results(document_dict, shared_settings)
 
     output.scan_complete(exec_time)
     if return_result:
-        return result_dict
+        return document_dict
 
 def web_start(target_list, shared_settings):
     start_time = time()

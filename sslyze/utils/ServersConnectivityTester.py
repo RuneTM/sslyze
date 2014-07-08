@@ -23,7 +23,6 @@
 #-------------------------------------------------------------------------------
 
 import socket
-from xml.etree.ElementTree import Element
 from ThreadPool import ThreadPool
 from nassl import SSLV23, SSLV3, TLSV1, TLSV1_2
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, StartTLSError, ProxyError
@@ -40,20 +39,13 @@ class InvalidTargetError(Exception):
     def get_error_txt(self):
         return self.RESULT_FORMAT.format(self._target_str, self._error_msg )
 
-    def get_error_xml(self):
-        errorXml = Element('invalidTarget', error = self._error_msg)
-        errorXml.text = self._target_str
-        return errorXml
-
     def get_error(self):
         error_dict = {
-            'tag_name':'invalidTarget',
+            'name':'invalidTarget',
             'attributes':{'error':self._error_msg},
             'text':self._target_str
         }
         return error_dict
-
-
 
 class TargetStringParser(object):
     """Utility class to parse a 'host:port' string taken from the command line
@@ -174,19 +166,6 @@ class ServersConnectivityTester(object):
 
         return result_str
 
-
-    @classmethod
-    def get_xml_result(cls, targets_ERR):
-        """
-        Returns XML containing the list of every target that returned an error
-        during the connectivity testing.
-        """
-        resultXml = Element('invalidTargets')
-        for exception in targets_ERR:
-            resultXml.append(exception.get_error_xml())
-
-        return resultXml
-
     @classmethod
     def get_result(cls, targets_ERR):
         """
@@ -194,7 +173,7 @@ class ServersConnectivityTester(object):
         during the connectivity testing.
         """
         failed_hosts = {
-            'tag_name':'invalidTargets',
+            'name':'invalidTargets',
             'sub':[]
         }
         for exception in targets_ERR:

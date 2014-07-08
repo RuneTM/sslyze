@@ -30,13 +30,11 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from xml.etree.ElementTree import Element
 from sslyze.utils.HTTPResponseParser import parse_http_response
 from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
 from sslyze.plugins import PluginBase
 from urlparse import urlparse
 import Cookie
-
 
 class PluginHSTS(PluginBase.PluginBase):
 
@@ -58,10 +56,10 @@ class PluginHSTS(PluginBase.PluginBase):
 
         # Results.
         results_dict = {
-            'tag_name':'hsts',
+            'name':'hsts',
             'attributes':{'title':'HTTP Strict Transport Security'},
             'sub':[{
-                'tag_name':'hsts',
+                'name':'hsts',
                 'attributes':{'sentHstsHeader':str(hsts_supported)}
             }]
         }
@@ -69,7 +67,7 @@ class PluginHSTS(PluginBase.PluginBase):
         if hsts_supported:
             results_dict['sub'][0]['attributes']['hstsHeaderValue'] = hsts_header
 
-        return PluginBase.PluginResult(self.__cli_output(results_dict), self.__xml_output(results_dict), results_dict)
+        return PluginBase.PluginResult(self.__cli_output(results_dict), results_dict)
 
     def __cli_output(self, results_dict):
         """
@@ -83,19 +81,6 @@ class PluginHSTS(PluginBase.PluginBase):
         else:
             txt_result.append(FIELD_FORMAT("Not supported: server did not send an HSTS header.", ""))
         return txt_result
-
-    def __xml_output(self, results_dict):
-        """
-        Old code to generate XML from results_dict.
-        """
-        xml_result = Element('hsts', title=results_dict['attributes']['title'])
-        xml_hsts_attr = {'sentHstsHeader': results_dict['sub'][0]['attributes']['sentHstsHeader']}
-        hsts_header = results_dict['sub'][0]['attributes'].get('hstsHeaderValue', None)
-        if hsts_header:
-            xml_hsts_attr['hstsHeaderValue'] = hsts_header
-        xml_hsts = Element('hsts', attrib=xml_hsts_attr)
-        xml_result.append(xml_hsts)
-        return xml_result
 
     def _get_hsts_header(self, target):
 
@@ -157,5 +142,3 @@ class PluginHSTS(PluginBase.PluginBase):
                 break
         
         return hstsHeader
-
-

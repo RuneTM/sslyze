@@ -26,9 +26,9 @@
 from os.path import join, dirname
 import imp
 
-from sslyze.plugins import PluginBase
-from sslyze.utils.ThreadPool import ThreadPool
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
+from plugins import PluginBase
+from utils.ThreadPool import ThreadPool
+from utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl import X509_NAME_MISMATCH, X509_NAME_MATCHES_SAN, X509_NAME_MATCHES_CN
 from nassl.SslClient import ClientCertificateRequested
 

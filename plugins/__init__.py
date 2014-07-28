@@ -27,8 +27,8 @@ import sys
 import inspect
 from imp import load_module, find_module
 
-from sslyze.plugins import PluginBase
-import sslyze.plugins
+from plugins import PluginBase
+import plugins
 
 
 
@@ -46,7 +46,7 @@ class PluginsFinder:
         self._commands = {}
         self._aggressive_comands = []
 
-        plugin_dir = sslyze.plugins.__path__[0]
+        plugin_dir = plugins.__path__[0]
         full_plugin_dir = os.path.join(sys.path[0], plugin_dir)
 
         if os.path.exists(full_plugin_dir):
@@ -61,8 +61,8 @@ class PluginsFinder:
                     # The plugin package HAS to be imported as a submodule
                     # of module 'plugins' or it will break windows compatibility
                         (file, pathname, description) = \
-                            find_module(full_name, sslyze.plugins.__path__)
-                        module = load_module('sslyze.plugins.' + full_name, file,
+                            find_module(full_name, plugins.__path__)
+                        module = load_module('plugins.' + full_name, file,
                                                 pathname, description)
                     except Exception as e:
                         print '  ' + module_name + ' - Import Error: ' + str(e)

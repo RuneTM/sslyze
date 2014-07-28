@@ -21,9 +21,9 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from sslyze.plugins import PluginBase
-from sslyze.utils.ThreadPool import ThreadPool
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
+from plugins import PluginBase
+from utils.ThreadPool import ThreadPool
+from utils.SSLyzeSSLConnection import create_sslyze_connection, SSLHandshakeRejected
 from nassl import SSLV2, SSLV3, TLSV1, TLSV1_1, TLSV1_2
 from nassl.SslClient import SslClient
 

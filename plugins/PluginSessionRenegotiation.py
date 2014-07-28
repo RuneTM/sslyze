@@ -23,8 +23,8 @@
 
 import socket
 
-from sslyze.plugins import PluginBase
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
+from plugins import PluginBase
+from utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl._nassl import OpenSSLError
 
 

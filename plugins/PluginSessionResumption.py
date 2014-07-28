@@ -21,10 +21,10 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from sslyze.plugins import PluginBase
-from sslyze.utils.ThreadPool import ThreadPool
+from plugins import PluginBase
+from utils.ThreadPool import ThreadPool
 from nassl import SSL_OP_NO_TICKET
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
+from utils.SSLyzeSSLConnection import create_sslyze_connection
 
 
 class PluginSessionResumption(PluginBase.PluginBase):

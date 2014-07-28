@@ -21,8 +21,8 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from sslyze.plugins import PluginBase
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
+from plugins import PluginBase
+from utils.SSLyzeSSLConnection import create_sslyze_connection
 from nassl.SslClient import ClientCertificateRequested
 
 class PluginCompression(PluginBase.PluginBase):

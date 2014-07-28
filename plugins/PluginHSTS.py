@@ -30,9 +30,9 @@
 #   along with SSLyze.  If not, see <http://www.gnu.org/licenses/>.
 #-------------------------------------------------------------------------------
 
-from sslyze.utils.HTTPResponseParser import parse_http_response
-from sslyze.utils.SSLyzeSSLConnection import create_sslyze_connection
-from sslyze.plugins import PluginBase
+from utils.HTTPResponseParser import parse_http_response
+from utils.SSLyzeSSLConnection import create_sslyze_connection
+from plugins import PluginBase
 from urlparse import urlparse
 import Cookie
 
